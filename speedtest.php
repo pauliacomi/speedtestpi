@@ -12,16 +12,20 @@ $maxrounds=2;
 $downloads="/home/pi/speedtest/temp_down/";
 $uploads="/home/pi/speedtest/upload/";
 $datadir="/home/pi/speedtest/data/";
+$conn = new PDO( 'sqlite:/home/pi/speedtest/data/networklog.db' );
+$conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
 /* * *              Speedtest servers               * * */
 $do_server['London, Vodafone'] = "http://speedtest.vodafone.co.uk";
 $do_server['Birmingham, Virgin'] = "http://perr-speedtest-1.server.virginmedia.net";
 $do_server['Manchester, Virgin'] = "http://manc-speedtest-1.server.virginmedia.net";
 $do_server['New York'] = "http://speedgauge2.optonline.net";
 
+
 /* Variables */
 $randoms=rand(100000000000, 9999999999999);
 $time=time();
-$day=date("H:i:s d-m-Y");
+$day=date("Y-m-d H:i:s");
 $do_size[1]=500;
 $do_size[2]=1000;
 $do_size[3]=1500;
@@ -31,7 +35,8 @@ $do_size[6]=3000;
 $do_size[7]=3500;
 $do_size[8]=4000;
 
-/* * *              The rest                        * * */
+
+/* * *              Function to test latency                     * * */
 function latency($round){
     global $server, $downloads, $do_server, $server, $iface, $randoms, $do_size,$globallatency,$maxrounds;
 
@@ -60,8 +65,10 @@ function latency($round){
     if ($round > 1){
         latency(--$round);
     } else {
+        /*** After latency has been run the specified number of times display the result, write to the log file and write it to the database  ***/
         print "\tAverage:".round($globallatency/$maxrounds, 2)."sec.\n";
         write_to_file(round($duration, 2), $server , "l");
+        database_upload(round($duration, 2), $server , "l");
     }
 }
 
@@ -114,6 +121,7 @@ function download($size,$round){
         } else {
            print "\tAverage: ".round($globaldownloadspeed/$maxrounds, 2)." Mb/s.\n";
            write_to_file(round($rx_speed, 2), $server , "d");
+           database_upload(round($rx_speed, 2), $server , "d");
   }
     }
 }
@@ -168,6 +176,7 @@ function upload($size,$round){
         } else {
            print "\tAverage: ".round($globaluploadspeed/$maxrounds, 2)." Mb/s.\n";
            write_to_file(round($tx_speed, 2), $server , "u");
+           database_upload(round($tx_speed, 2), $server , "u");
   }
     }
 }
@@ -177,6 +186,21 @@ function write_to_file($data, $server, $updown){ // l - latency; u - upload; d -
     $fp = fopen($datadir."log.txt", "a");
     fwrite($fp, $day."\t".$updown."\t".$data."\t".$server."\n");
     fclose($fp);
+}
+
+function database_upload($data, $server, $updown){
+    global $day, $datadir, $conn;
+    
+    try{
+    	$conn->exec("INSERT INTO results (rdate, type, value, server) values( ".$day.", '".$updown."', ".$data.", '".$server."');");
+    }
+    catch(PDOException $e)
+    {
+    	echo "Error: ". $e->getMessage() . "\n	";
+    }
+    
+    $conn = null;
+    
 }
 
 foreach ($do_server as $server => $serverurl){
